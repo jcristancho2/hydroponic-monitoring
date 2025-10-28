@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Hidroponía - Monitoreo</title>
+  <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
+  <style>
+    :root {
+      --primary: #2c3e50;
+      --success: #27ae60;
+      --danger: #e74c3c;
+      --bg: #f8f9fa;
+      --card: #ffffff;
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: var(--bg);
+      color: var(--primary);
+      padding: 20px;
+      line-height: 1.6;
+    }
+    .container { max-width: 900px; margin: 0 auto; }
+    header {
+      text-align: center;
+      margin-bottom: 30px;
+      padding: 20px;
+      background: white;
+      border-radius: 15px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    }
+    h1 { color: #2c3e50; font-size: 2em; }
+    .subtitle { color: #7f8c8d; font-size: 1.1em; }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+      gap: 20px;
+      margin-top: 20px;
+    }
+    .card {
+      background: var(--card);
+      padding: 20px;
+      border-radius: 15px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+      text-align: center;
+      transition: transform 0.2s;
+    }
+    .card:hover { transform: translateY(-5px); }
+    .label { color: #7f8c8d; font-size: 0.9em; text-transform: uppercase; letter-spacing: 1px; }
+    .value {
+      font-size: 2.2em;
+      font-weight: bold;
+      margin: 10px 0;
+      color: var(--primary);
+    }
+    .unit { font-size: 0.7em; color: #95a5a6; }
+
+    .status { padding: 10px; border-radius: 10px; font-weight: bold; }
+    .online { background: #d4edda; color: #155724; }
+    .offline { background: #f8d7da; color: #721c24; }
+    .on { color: var(--success); }
+    .off { color: var(--danger); }
+
+    footer {
+      text-align: center;
+      margin-top: 50px;
+      color: #95a5a6;
+      font-size: 0.9em;
+    }
+
+    @media (max-width: 600px) {
+      .grid { grid-template-columns: 1fr; }
+      h1 { font-size: 1.6em; }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>Hidroponía ESP32</h1>
+      <p class="subtitle">Monitoreo en tiempo real</p>
+    </header>
+
+    <div class="card">
+      <div class="label">Estado del Sistema</div>
+      <div id="estado" class="value status offline">Desconectado</div>
+    </div>
+
+    <div class="grid">
+      <div class="card">
+        <div class="label">pH (PH4502C)</div>
+        <div id="ph" class="value">--</div>
+        <div class="unit">pH</div>
+      </div>
+      <div class="card">
+        <div class="label">TDS (SEN0244)</div>
+        <div id="tds" class="value">--</div>
+        <div class="unit">ppm</div>
+      </div>
+    </div>
+
+    <div class="grid">
+      <div class="card">
+        <div class="label">Nivel Líquido (SEN0205)</div>
+        <div id="nivel_liquido" class="value">--</div>
+        <div class="unit">%</div>
+      </div>
+      <div class="card">
+        <div class="label">Nivel Tranque (Ultrasónico)</div>
+        <div id="nivel_tranque" class="value">--</div>
+        <div class="unit">cm</div>
+      </div>
+    </div>
+
+    <h2 style="margin: 30px 0 15px; color: #34495e; text-align: center;">Actuadores</h2>
+    <div class="grid">
+      <div class="card">
+        <div class="label">Bomba Agua</div>
+        <div id="bomba_agua" class="value off">OFF</div>
+      </div>
+      <div class="card">
+        <div class="label">Bomba Sustrato</div>
+        <div id="bomba_sustrato" class="value off">OFF</div>
+      </div>
+      <div class="card">
+        <div class="label">Bomba Solución</div>
+        <div id="bomba_solucion" class="value off">OFF</div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top: 30px;">
+      <div class="label">Última actualización</div>
+      <div id="timestamp" class="value">--</div>
+    </div>
+
+    <footer>
+      <p>Proyecto Hidropónico | ESP32 + Firebase</p>
+    </footer>
+  </div>
+
+  <script>
+    const firebaseConfig = {
+      databaseURL: "https://proyecto-hidroponico-9ea9d-default-rtdb.firebaseio.com"
+    };
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
+    const ref = db.ref("/hydroponic_data");
+
+    ref.on("value", (snapshot) => {
+      const data = snapshot.val();
+      if (!data) return;
+
+      // Estado
+      const estado = data.diagnostico?.estado || "Desconocido";
+      const elEstado = document.getElementById("estado");
+      elEstado.textContent = estado;
+      elEstado.className = "value status " + (estado === "Conectado" ? "online" : "offline");
+
+      // Sensores
+      document.getElementById("ph").textContent = (data.sensores?.ph4502c?.ph || "--").toFixed(1);
+      document.getElementById("tds").textContent = data.sensores?.sen0244?.tds || "--";
+      document.getElementById("nivel_liquido").textContent = data.sensores?.sen0205?.nivel_liquido || "--";
+      document.getElementById("nivel_tranque").textContent = data.sensores?.ultrasonico?.nivel_tranque || "--";
+
+      // Bombas
+      const updateBomba = (id, estado) => {
+        const el = document.getElementById(id);
+        el.textContent = estado ? "ON" : "OFF";
+        el.className = "value " + (estado ? "on" : "off");
+      };
+      updateBomba("bomba_agua", data.actuadores?.bomba_agua?.estado);
+      updateBomba("bomba_sustrato", data.actuadores?.bomba_sustrato?.estado);
+      updateBomba("bomba_solucion", data.actuadores?.bomba_solucion?.estado);
+
+      // Timestamp
+      const ts = data.diagnostico?.timestamp || Date.now();
+      const date = new Date(ts);
+      document.getElementById("timestamp").textContent = date.toLocaleString();
+    });
+  </script>
+</body>
+</html>
