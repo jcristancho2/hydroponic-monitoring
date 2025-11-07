@@ -20,10 +20,10 @@ public:
 
     struct Config
     {
-        float phMin = 5.8f;                  // pH mínimo
-        float phMax = 6.8f;                  // pH máximo
-        float phLowHyst = 6.0f;              // Histéresis baja
-        float phHighHyst = 6.6f;             // Histéresis alta
+        float phMin = 5.8f;                  // pH mínimo - activa bomba pH+ si está por debajo
+        float phMax = 6.9f;                  // pH máximo - activa bomba pH- si está por encima
+        float phLowHyst = 6.2f;              // Histéresis baja - detiene pH+ cuando llega aquí
+        float phHighHyst = 6.7f;             // Histéresis alta - detiene pH- cuando llega aquí
         unsigned long doseOnMs = 10000;      // 10s por pulso
         unsigned long maxSessionMs = 600000; // 10 min máximo
         unsigned long recheckDelayMs = 0;    // Sin delay entre pulsos

@@ -40,7 +40,8 @@ private:
     unsigned long updateInterval;
 
     // Constantes para detección de conexión
-    static constexpr int MIN_CONNECTED_ADC = 150;
+    // Bajado a 100 para detectar agua muy pura (baja mineralización)
+    static constexpr int MIN_CONNECTED_ADC = 100;
     static constexpr int MAX_CONNECTED_ADC = 4000;
 
     void checkConnection();

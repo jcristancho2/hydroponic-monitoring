@@ -9,14 +9,10 @@ import { ChartCard } from "@/components/chart-card";
 import { SystemStatus } from "@/components/system-status";
 import { ThemeToggle } from "@/components/theme-toggle";
 import {
-  Activity,
   Droplets,
   Beaker,
-  Waves,
   CheckCircle,
   XCircle,
-  Gauge,
-  AlertTriangle,
 } from "lucide-react";
 
 interface HydroponicData {
@@ -248,7 +244,7 @@ export function DashboardView() {
         </Card>
 
         {/* Sensors Grid */}
-        <div className="grid gap-3 sm:grid-cols-2 sm:gap-4 lg:grid-cols-4 lg:gap-6">
+        <div className="grid gap-3 sm:grid-cols-2 sm:gap-4 lg:gap-6">
           <SensorCard
             title="pH"
             value={
@@ -296,24 +292,6 @@ export function DashboardView() {
                 : "(Desconectado - Sin datos)"
             }`}
             optimalRange="400 - 1200 ppm"
-          />
-          <SensorCard
-            title="Nivel General"
-            value="--"
-            unit="%"
-            icon={<Waves className="h-4 w-4 sm:h-5 sm:w-5" />}
-            status="unknown"
-            description="SEN0205 (No implementado)"
-            optimalRange="> 30%"
-          />
-          <SensorCard
-            title="Nivel Tanque"
-            value="--"
-            unit="cm"
-            icon={<Activity className="h-4 w-4 sm:h-5 sm:w-5" />}
-            status="unknown"
-            description="Ultrasónico (No implementado)"
-            optimalRange="> 20 cm"
           />
         </div>
 
