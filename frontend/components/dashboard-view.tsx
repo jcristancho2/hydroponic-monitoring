@@ -426,16 +426,19 @@ export function DashboardView() {
               title="Bomba Principal/Circulación"
               status={data?.actuadores?.bomba_agua?.estado === 1}
               description="Control de flujo principal del sistema"
+              bombaKey="bomba_agua"
             />
             <PumpCard
               title="Bomba pH- (Ácido)"
               status={data?.actuadores?.bomba_sustrato?.estado === 1}
               description="Dosificación para reducir pH"
+              bombaKey="bomba_sustrato"
             />
             <PumpCard
               title="Bomba pH+ (Base)"
               status={data?.actuadores?.bomba_solucion?.estado === 1}
               description="Dosificación para aumentar pH"
+              bombaKey="bomba_solucion"
             />
           </div>
         </div>

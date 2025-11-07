@@ -1,13 +1,20 @@
 import { Card } from "@/components/ui/card";
 import { Power } from "lucide-react";
+import { getDatabase, ref, set } from "firebase/database";
 
 interface PumpCardProps {
   title: string;
   status: boolean;
   description?: string;
+  bombaKey: string; // "bomba_agua", "bomba_sustrato", "bomba_solucion"
 }
 
-export function PumpCard({ title, status, description }: PumpCardProps) {
+export function PumpCard({ title, status, description, bombaKey }: PumpCardProps) {
+  const handlePowerClick = () => {
+    const db = getDatabase();
+    set(ref(db, `/hydroponic_data/control/${bombaKey}`), !status);
+  };
+
   return (
     <Card className="border-border/50 bg-card/50 p-6 backdrop-blur transition-all hover:border-border">
       <div className="flex items-center justify-between">
@@ -18,6 +25,9 @@ export function PumpCard({ title, status, description }: PumpCardProps) {
                 ? "bg-green-500/10 text-green-500"
                 : "bg-muted text-muted-foreground"
             }`}
+            style={{ cursor: "pointer" }}
+            onClick={handlePowerClick}
+            title="Encender/Apagar bomba"
           >
             <Power className="h-5 w-5" />
           </div>
