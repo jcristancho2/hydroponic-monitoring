@@ -100,7 +100,11 @@ export function DashboardView() {
               }
             }
 
-            if (newData.sensores?.ph4502c?.ph) {
+            // Solo agregar al historial si el sensor está realmente conectado y calibrado
+            if (
+              newData.sensores?.ph4502c?.ph &&
+              newData.sensores?.ph_calibrado
+            ) {
               const now = new Date().toLocaleTimeString("es-ES", {
                 hour: "2-digit",
                 minute: "2-digit",
@@ -114,7 +118,11 @@ export function DashboardView() {
               });
             }
 
-            if (newData.sensores?.sen0244?.tds) {
+            // Solo agregar al historial si el sensor TDS está conectado
+            if (
+              newData.sensores?.sen0244?.tds &&
+              newData.sensores?.tds_conectado
+            ) {
               const now = new Date().toLocaleTimeString("es-ES", {
                 hour: "2-digit",
                 minute: "2-digit",
@@ -243,11 +251,15 @@ export function DashboardView() {
         <div className="grid gap-3 sm:grid-cols-2 sm:gap-4 lg:grid-cols-4 lg:gap-6">
           <SensorCard
             title="pH"
-            value={data?.sensores?.ph4502c?.ph?.toFixed(1) || "--"}
+            value={
+              data?.sensores?.ph_calibrado && data?.sensores?.ph4502c?.ph
+                ? data.sensores.ph4502c.ph.toFixed(1)
+                : "--"
+            }
             unit="pH"
             icon={<Beaker className="h-4 w-4 sm:h-5 sm:w-5" />}
             status={
-              data?.sensores?.ph4502c?.ph
+              data?.sensores?.ph_calibrado && data?.sensores?.ph4502c?.ph
                 ? data.sensores.ph4502c.ph >= 5.5 &&
                   data.sensores.ph4502c.ph <= 7.5
                   ? "optimal"
@@ -255,17 +267,23 @@ export function DashboardView() {
                 : "unknown"
             }
             description={`PH4502C ${
-              data?.sensores?.ph_calibrado ? "(Calibrado)" : "(No calibrado)"
+              data?.sensores?.ph_calibrado
+                ? "(Calibrado)"
+                : "(No calibrado - Sin datos)"
             }`}
             optimalRange="5.5 - 7.5"
           />
           <SensorCard
             title="TDS/Conductividad"
-            value={data?.sensores?.sen0244?.tds?.toFixed(0) || "--"}
+            value={
+              data?.sensores?.tds_conectado && data?.sensores?.sen0244?.tds
+                ? data.sensores.sen0244.tds.toFixed(0)
+                : "--"
+            }
             unit="ppm"
             icon={<Droplets className="h-4 w-4 sm:h-5 sm:w-5" />}
             status={
-              data?.sensores?.sen0244?.tds
+              data?.sensores?.tds_conectado && data?.sensores?.sen0244?.tds
                 ? data.sensores.sen0244.tds >= 400 &&
                   data.sensores.sen0244.tds <= 1200
                   ? "optimal"
@@ -273,40 +291,28 @@ export function DashboardView() {
                 : "unknown"
             }
             description={`SEN0244 ${
-              data?.sensores?.tds_conectado ? "(Conectado)" : "(Desconectado)"
+              data?.sensores?.tds_conectado
+                ? "(Conectado)"
+                : "(Desconectado - Sin datos)"
             }`}
             optimalRange="400 - 1200 ppm"
           />
           <SensorCard
             title="Nivel General"
-            value={data?.sensores?.sen0205?.nivel_liquido?.toString() || "--"}
+            value="--"
             unit="%"
             icon={<Waves className="h-4 w-4 sm:h-5 sm:w-5" />}
-            status={
-              data?.sensores?.sen0205?.nivel_liquido
-                ? data.sensores.sen0205.nivel_liquido > 30
-                  ? "optimal"
-                  : "warning"
-                : "unknown"
-            }
-            description="Sistema General"
+            status="unknown"
+            description="SEN0205 (No implementado)"
             optimalRange="> 30%"
           />
           <SensorCard
             title="Nivel Tanque"
-            value={
-              data?.sensores?.ultrasonico?.nivel_tranque?.toString() || "--"
-            }
+            value="--"
             unit="cm"
             icon={<Activity className="h-4 w-4 sm:h-5 sm:w-5" />}
-            status={
-              data?.sensores?.ultrasonico?.nivel_tranque
-                ? data.sensores.ultrasonico.nivel_tranque > 20
-                  ? "optimal"
-                  : "warning"
-                : "unknown"
-            }
-            description="Principal"
+            status="unknown"
+            description="Ultrasónico (No implementado)"
             optimalRange="> 20 cm"
           />
         </div>
@@ -381,23 +387,55 @@ export function DashboardView() {
           </div>
         )}
 
-        {/* Charts */}
+        {/* Charts - Only show if sensors are connected */}
         <div className="grid gap-4 sm:gap-6 lg:grid-cols-2">
-          <ChartCard
-            title="Historial de pH"
-            data={phHistory}
-            dataKey="value"
-            color="#22c55e"
-            optimalMin={5.5}
-            optimalMax={7.5}
-          />
-          <ChartCard
-            title="Historial de TDS"
-            data={tdsHistory}
-            dataKey="value"
-            color="#3b82f6"
-            unit="ppm"
-          />
+          <div>
+            {data?.sensores?.ph_calibrado && phHistory.length > 0 ? (
+              <ChartCard
+                title="Historial de pH"
+                data={phHistory}
+                dataKey="value"
+                color="#22c55e"
+                optimalMin={5.5}
+                optimalMax={7.5}
+              />
+            ) : (
+              <Card className="border-border/50 bg-card/50 p-6 backdrop-blur">
+                <h3 className="mb-4 text-lg font-semibold">Historial de pH</h3>
+                <div className="flex h-[250px] items-center justify-center text-muted-foreground">
+                  <div className="text-center">
+                    <Beaker className="mx-auto h-12 w-12 mb-4 opacity-50" />
+                    <p className="text-sm">Sensor pH no calibrado</p>
+                    <p className="text-xs">
+                      Conecta y calibra el sensor para ver datos
+                    </p>
+                  </div>
+                </div>
+              </Card>
+            )}
+          </div>
+          <div>
+            {data?.sensores?.tds_conectado && tdsHistory.length > 0 ? (
+              <ChartCard
+                title="Historial de TDS"
+                data={tdsHistory}
+                dataKey="value"
+                color="#3b82f6"
+                unit="ppm"
+              />
+            ) : (
+              <Card className="border-border/50 bg-card/50 p-6 backdrop-blur">
+                <h3 className="mb-4 text-lg font-semibold">Historial de TDS</h3>
+                <div className="flex h-[250px] items-center justify-center text-muted-foreground">
+                  <div className="text-center">
+                    <Droplets className="mx-auto h-12 w-12 mb-4 opacity-50" />
+                    <p className="text-sm">Sensor TDS no conectado</p>
+                    <p className="text-xs">Conecta el sensor para ver datos</p>
+                  </div>
+                </div>
+              </Card>
+            )}
+          </div>
         </div>
 
         {/* Pumps */}

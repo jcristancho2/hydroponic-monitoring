@@ -36,11 +36,6 @@ const unsigned long SENSOR_INTERVAL = 500;     // 500ms para sensores
 const unsigned long FIREBASE_INTERVAL = 10000; // 10s para Firebase
 const unsigned long SERIAL_INTERVAL = 5000;    // 5s para salida serial
 
-// Variables para simulación cuando no hay sensores físicos
-bool useSimulation = false;
-float prev_ph = 6.5;
-float prev_tds = 500.0;
-
 void conectarWiFi()
 {
   Serial.println("\nConectando a WiFi...");
@@ -85,43 +80,23 @@ void enviarDatos()
   ok &= Firebase.RTDB.setString(&fbData, "/hydroponic_data/diagnostico/estado", "Conectado");
   ok &= Firebase.RTDB.setInt(&fbData, "/hydroponic_data/diagnostico/timestamp", millis());
 
-  // DATOS DE SENSORES REALES O SIMULADOS
+  // DATOS DE SENSORES REALES ÚNICAMENTE
   float ph_value, tds_value;
   int nivel_liquido_pct, nivel_tranque;
 
-  if (useSimulation)
-  {
-    // Simulación cuando no hay sensores físicos
-    prev_ph += random(-20, 21) / 10.0;
-    if (prev_ph < 5.5)
-      prev_ph = 5.5;
-    if (prev_ph > 7.5)
-      prev_ph = 7.5;
-    ph_value = prev_ph;
+  // Siempre leer sensores reales - sin simulación
+  ph_value = phSensor.getFilteredPH();
+  tds_value = tdsSensor.getTDSValue();
 
-    prev_tds += random(-50, 51);
-    if (prev_tds < 0)
-      prev_tds = 0;
-    if (prev_tds > 1000)
-      prev_tds = 1000;
-    tds_value = prev_tds;
+  // Niveles reales de tanques de dosificación
+  bool nivel_ph_minus = levelSensors.isLevelOK("pH-");
+  bool nivel_ph_plus = levelSensors.isLevelOK("pH+");
 
-    nivel_liquido_pct = random(0, 101);
-    nivel_tranque = random(10, 100);
+  // Para compatibilidad con dashboard - usar 0 si no hay sensores de nivel general
+  nivel_liquido_pct = 0; // Indicar que no hay sensor de nivel general
+  nivel_tranque = 0;     // Indicar que no hay sensor ultrasónico
 
-    Serial.println("MODO SIMULACIÓN ACTIVO");
-  }
-  else
-  {
-    // Datos reales de los sensores
-    ph_value = phSensor.getFilteredPH();
-    tds_value = tdsSensor.getTDSValue();
-
-    // Para compatibilidad con frontend - usar valores simulados para nivel general
-    // Solo monitoreamos niveles de tanques de dosificación pH+ y pH-
-    nivel_liquido_pct = random(60, 90); // Simular nivel general del sistema
-    nivel_tranque = random(70, 95);     // Para compatibilidad con dashboard
-  }
+  Serial.println("ENVIANDO DATOS REALES DE SENSORES");
 
   // Enviar datos de sensores
   ok &= Firebase.RTDB.setFloat(&fbData, "/hydroponic_data/sensores/ph4502c/ph", ph_value);
@@ -141,14 +116,11 @@ void enviarDatos()
   // Datos adicionales del sistema real
   ok &= Firebase.RTDB.setBool(&fbData, "/hydroponic_data/sensores/tds_conectado", tdsSensor.isConnected());
   ok &= Firebase.RTDB.setBool(&fbData, "/hydroponic_data/sensores/ph_calibrado", phSensor.isCalibrationValid());
-  ok &= Firebase.RTDB.setString(&fbData, "/hydroponic_data/sistema/modo", useSimulation ? "simulacion" : "real");
+  ok &= Firebase.RTDB.setString(&fbData, "/hydroponic_data/sistema/modo", "real"); // Siempre modo real
 
-  // Estados de sensores de nivel (solo tanques de dosificación)
-  if (!useSimulation)
-  {
-    ok &= Firebase.RTDB.setBool(&fbData, "/hydroponic_data/sensores/nivel_ph_minus/estado", levelSensors.isLevelOK("pH-"));
-    ok &= Firebase.RTDB.setBool(&fbData, "/hydroponic_data/sensores/nivel_ph_plus/estado", levelSensors.isLevelOK("pH+"));
-  }
+  // Estados de sensores de nivel de tanques de dosificación (siempre reales)
+  ok &= Firebase.RTDB.setBool(&fbData, "/hydroponic_data/sensores/nivel_ph_minus/estado", nivel_ph_minus);
+  ok &= Firebase.RTDB.setBool(&fbData, "/hydroponic_data/sensores/nivel_ph_plus/estado", nivel_ph_plus);
 
   if (ok)
   {
@@ -205,7 +177,7 @@ void imprimirEstadoSistema()
     Serial.println("Estado de dosificación: IDLE");
   }
 
-  Serial.printf("Modo: %s\n", useSimulation ? "SIMULACIÓN" : "SENSORES REALES");
+  Serial.printf("Modo: SENSORES REALES\n");
   Serial.println("=====================================\n");
 }
 
@@ -243,9 +215,19 @@ void setup()
   conectarWiFi();
   if (WiFi.status() != WL_CONNECTED)
   {
-    Serial.println("Sin WiFi - Funcionando en modo local");
-    useSimulation = true; // Usar simulación si no hay WiFi
-    return;
+    Serial.println("Sin WiFi - Sistema requiere conexión para datos reales");
+    Serial.println("❌ WIFI REQUERIDO PARA FUNCIONAMIENTO REAL");
+    while (true)
+    {
+      delay(1000);
+      Serial.println("Reintentando WiFi...");
+      conectarWiFi();
+      if (WiFi.status() == WL_CONNECTED)
+      {
+        Serial.println("✅ WiFi conectado, continuando...");
+        break;
+      }
+    }
   }
 
   // Configurar Firebase
@@ -271,15 +253,23 @@ void setup()
   if (Firebase.ready())
   {
     Serial.println("\n✅ Firebase conectado");
-    Serial.println("🔄 Sistema funcionando con sensores reales + Firebase");
-    useSimulation = false;
+    Serial.println("🔄 Sistema funcionando con SENSORES REALES únicamente");
     enviarDatos(); // Envío inicial
   }
   else
   {
-    Serial.println("\n❌ Timeout Firebase - Modo local");
-    Serial.println(fbData.errorReason().c_str());
-    useSimulation = true;
+    Serial.println("\n❌ Firebase requerido para datos reales");
+    Serial.println("🔄 Reintentando conexión Firebase...");
+    while (!Firebase.ready())
+    {
+      delay(2000);
+      Serial.print(".");
+      if (Firebase.ready())
+      {
+        Serial.println("\n✅ Firebase conectado - continuando con sensores reales");
+        break;
+      }
+    }
   }
 
   Serial.println("\n✅ Sistema inicializado completamente");
@@ -293,50 +283,44 @@ void loop()
   // Procesar comandos seriales
   serialCommands.processCommands();
 
-  // Actualizar sensores
+  // Actualizar sensores (siempre en modo real)
   if (now - lastSensorUpdate >= SENSOR_INTERVAL)
   {
     lastSensorUpdate = now;
 
-    if (!useSimulation)
+    // Actualizar sensores reales
+    phSensor.update();
+
+    if (tdsSensor.shouldUpdate())
     {
-      // Actualizar sensores reales
-      phSensor.update();
-
-      if (tdsSensor.shouldUpdate())
-      {
-        tdsSensor.update();
-      }
-
-      if (ldrSensor.shouldUpdate())
-      {
-        ldrSensor.update();
-      }
-
-      // Control automático de pH
-      bool nivelMinus = levelSensors.isLevelOK("pH-");
-      bool nivelPlus = levelSensors.isLevelOK("pH+");
-      pumpController.update(phSensor.getFilteredPH(), nivelMinus, nivelPlus);
+      tdsSensor.update();
     }
+
+    if (ldrSensor.shouldUpdate())
+    {
+      ldrSensor.update();
+    }
+
+    // Control automático de pH con datos reales
+    bool nivelMinus = levelSensors.isLevelOK("pH-");
+    bool nivelPlus = levelSensors.isLevelOK("pH+");
+    pumpController.update(phSensor.getFilteredPH(), nivelMinus, nivelPlus);
   }
 
-  // Actualizar Firebase
+  // Actualizar Firebase (solo con datos reales)
   if (now - lastFirebaseUpdate >= FIREBASE_INTERVAL)
   {
     lastFirebaseUpdate = now;
-    if (WiFi.status() == WL_CONNECTED && (Firebase.ready() || useSimulation))
+    if (WiFi.status() == WL_CONNECTED && Firebase.ready())
     {
       enviarDatos();
     }
   }
 
-  // Salida por Serial
+  // Salida por Serial (siempre mostrar estado real)
   if (now - lastSerialOutput >= SERIAL_INTERVAL)
   {
     lastSerialOutput = now;
-    if (!useSimulation)
-    {
-      imprimirEstadoSistema();
-    }
+    imprimirEstadoSistema();
   }
 }
