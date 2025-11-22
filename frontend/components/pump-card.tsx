@@ -56,3 +56,48 @@ export function PumpCard({ title, status, description, bombaKey }: PumpCardProps
     </Card>
   );
 }
+
+<div className="grid gap-3 sm:gap-4 md:grid-cols-3 lg:gap-6 mt-4">
+  <div>
+    <button
+      className="px-4 py-2 bg-green-600 text-white rounded mr-2"
+      onClick={() => setBombaCommand("bomba_agua", 1)}
+    >
+      Encender Bomba Agua
+    </button>
+    <button
+      className="px-4 py-2 bg-red-600 text-white rounded"
+      onClick={() => setBombaCommand("bomba_agua", 0)}
+    >
+      Apagar Bomba Agua
+    </button>
+  </div>
+  <div>
+    <button
+      className="px-4 py-2 bg-green-600 text-white rounded mr-2"
+      onClick={() => setBombaCommand("bomba_sustrato", 1)}
+    >
+      Encender Bomba pH-
+    </button>
+    <button
+      className="px-4 py-2 bg-red-600 text-white rounded"
+      onClick={() => setBombaCommand("bomba_sustrato", 0)}
+    >
+      Apagar Bomba pH-
+    </button>
+  </div>
+  <div>
+    <button
+      className="px-4 py-2 bg-green-600 text-white rounded mr-2"
+      onClick={() => setBombaCommand("bomba_solucion", 1)}
+    >
+      Encender Bomba pH+
+    </button>
+    <button
+      className="px-4 py-2 bg-red-600 text-white rounded"
+      onClick={() => setBombaCommand("bomba_solucion", 0)}
+    >
+      Apagar Bomba pH+
+    </button>
+  </div>
+</div>

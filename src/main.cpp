@@ -4,10 +4,10 @@
 #include <EEPROM.h>
 #include "addons/TokenHelper.h"
 #include "addons/RTDBHelper.h"
-#include "pin_config.h"     // Configuraci├│n de pines centralizada
-#include "network_config.h" // Configuraci├│n de red centralizada
+#include "pin_config.h"
+#include "network_config.h"
 
-// Incluir nuestros m├│dulos
+// Incluir nuestros mudulos
 #include "PHSensor.h"
 #include "TDSSensor.h"
 #include "PumpController.h"
@@ -20,7 +20,7 @@ FirebaseData fbData;
 FirebaseAuth auth;
 FirebaseConfig config;
 
-// Objetos de nuestros m├│dulos
+// Objetos de nuestros modulos
 PHSensor phSensor(PH_PIN, 0); // EEPROM addr 0
 TDSSensor tdsSensor(TDS_PIN);
 PumpController pumpController(RELAY_CIRC, RELAY_PH_MINUS, RELAY_PH_PLUS);
@@ -35,6 +35,18 @@ unsigned long lastSerialOutput = 0;
 const unsigned long SENSOR_INTERVAL = 500;     // 500ms para sensores
 const unsigned long FIREBASE_INTERVAL = 10000; // 10s para Firebase
 const unsigned long SERIAL_INTERVAL = 5000;    // 5s para salida serial
+
+// Al inicio del archivo, después de las variables globales
+int lastCmdBombaAgua = -1;
+int lastCmdBombaSustrato = -1;
+int lastCmdBombaSolucion = -1;
+
+// Monitoreo de exposición solar
+unsigned long solarExposureStartTime = 0;        // Inicio de exposición solar
+unsigned long totalSolarExposureToday = 0;       // Total acumulado hoy (en segundos)
+bool isSolarExposure = false;                    // Bandera de exposición activa
+const int SOLAR_THRESHOLD = 500;                 // Umbral de LDR para considerar luz solar
+const unsigned long SOLAR_RESET_TIME = 86400000; // 24 horas en ms para resetear contador
 
 void conectarWiFi()
 {
@@ -72,7 +84,7 @@ void enviarDatos()
   String mac = WiFi.macAddress();
   bool ok = true;
 
-  // DATOS DE DIAGN├ôSTICO
+  // DATOS DE DIAGNOSTICO
   ok &= Firebase.RTDB.setString(&fbData, "/hydroponic_data/diagnostico/chip", "ESP32-D0WD-V3");
   ok &= Firebase.RTDB.setString(&fbData, "/hydroponic_data/diagnostico/mac", mac);
   ok &= Firebase.RTDB.setFloat(&fbData, "/hydroponic_data/diagnostico/senal", WiFi.RSSI());
@@ -80,29 +92,47 @@ void enviarDatos()
   ok &= Firebase.RTDB.setString(&fbData, "/hydroponic_data/diagnostico/estado", "Conectado");
   ok &= Firebase.RTDB.setInt(&fbData, "/hydroponic_data/diagnostico/timestamp", millis());
 
-  // DATOS DE SENSORES REALES ├ÜNICAMENTE
+  // DATOS DE SENSORES
   float ph_value, tds_value;
   int nivel_liquido_pct, nivel_tranque;
 
-  // Siempre leer sensores reales - sin simulaci├│n
+  // Siempre leer sensores
   ph_value = phSensor.getFilteredPH();
   tds_value = tdsSensor.getTDSValue();
 
-  // Niveles reales de tanques de dosificaci├│n
+  // Niveles de tanques de dosificacion
   bool nivel_ph_minus = levelSensors.isLevelOK("pH-");
   bool nivel_ph_plus = levelSensors.isLevelOK("pH+");
 
   // Para compatibilidad con dashboard - usar 0 si no hay sensores de nivel general
-  nivel_liquido_pct = 0; // Indicar que no hay sensor de nivel general
-  nivel_tranque = 0;     // Indicar que no hay sensor ultras├│nico
+  nivel_liquido_pct = 0; // Indicar que no hay sensor
+  nivel_tranque = 0;     // Indicar que no hay sensor
 
-  Serial.println("ENVIANDO DATOS REALES DE SENSORES");
+  Serial.println("ENVIANDO DATOS DE SENSORES");
 
-  // Enviar datos de sensores
+  // Valor de la fotoresistencia (LDR) - LEER PRIMERO
+  int ldr_value = ldrSensor.getRawValue();
+  String ldr_level = ldrSensor.getLightLevelString();
+
+  // Generar timestamp para el historial
+  unsigned long dataTimestamp = millis();
+  char phHistPath[80];
+  char tdsHistPath[80];
+  char ldrHistPath[80];
+  sprintf(phHistPath, "/hydroponic_data/historial/ph/%lu", dataTimestamp);
+  sprintf(tdsHistPath, "/hydroponic_data/historial/tds/%lu", dataTimestamp);
+  sprintf(ldrHistPath, "/hydroponic_data/historial/ldr/%lu", dataTimestamp);
+
+  // Enviar datos de sensores (datos actuales)
   ok &= Firebase.RTDB.setFloat(&fbData, "/hydroponic_data/sensores/ph4502c/ph", ph_value);
   ok &= Firebase.RTDB.setFloat(&fbData, "/hydroponic_data/sensores/sen0244/tds", tds_value);
   ok &= Firebase.RTDB.setInt(&fbData, "/hydroponic_data/sensores/sen0205/nivel_liquido", nivel_liquido_pct);
   ok &= Firebase.RTDB.setInt(&fbData, "/hydroponic_data/sensores/ultrasonico/nivel_tranque", nivel_tranque);
+
+  // Guardar historial con timestamp (paths generados con sprintf)
+  ok &= Firebase.RTDB.setFloat(&fbData, phHistPath, ph_value);
+  ok &= Firebase.RTDB.setFloat(&fbData, tdsHistPath, tds_value);
+  ok &= Firebase.RTDB.setInt(&fbData, ldrHistPath, ldr_value);
 
   // Estados de las bombas
   int bomba_agua = pumpController.isCirculationOn() ? 1 : 0;
@@ -116,9 +146,53 @@ void enviarDatos()
   // Datos adicionales del sistema real
   ok &= Firebase.RTDB.setBool(&fbData, "/hydroponic_data/sensores/tds_conectado", tdsSensor.isConnected());
   ok &= Firebase.RTDB.setBool(&fbData, "/hydroponic_data/sensores/ph_calibrado", phSensor.isCalibrationValid());
-  ok &= Firebase.RTDB.setString(&fbData, "/hydroponic_data/sistema/modo", "real"); // Siempre modo real
+  ok &= Firebase.RTDB.setString(&fbData, "/hydroponic_data/sistema/modo", "conectados");
 
-  // Estados de sensores de nivel de tanques de dosificaci├│n (siempre reales)
+  // Enviar datos de LDR a sensores en tiempo real
+  ok &= Firebase.RTDB.setInt(&fbData, "/hydroponic_data/sensores/ldr/valor_bruto", ldr_value);
+  ok &= Firebase.RTDB.setString(&fbData, "/hydroponic_data/sensores/ldr/nivel_luz", ldr_level);
+
+  // Calcular tiempo de exposición solar
+  unsigned long currentTime = millis();
+  bool hasSolarExposure = (ldr_value > SOLAR_THRESHOLD); // Luz solar detectada
+
+  if (hasSolarExposure && !isSolarExposure)
+  {
+    // Inicio de exposición solar
+    solarExposureStartTime = currentTime;
+    isSolarExposure = true;
+    Serial.println("☀️ Inicio de exposición solar detectado");
+  }
+  else if (!hasSolarExposure && isSolarExposure)
+  {
+    // Fin de exposición solar - agregar tiempo acumulado
+    unsigned long exposureTime = (currentTime - solarExposureStartTime) / 1000; // Convertir a segundos
+    totalSolarExposureToday += exposureTime;
+    isSolarExposure = false;
+    Serial.printf("☀️ Exposición solar finalizada. Tiempo: %lu segundos\n", exposureTime);
+  }
+
+  // Resetear contador cada 24 horas
+  static unsigned long lastResetTime = 0;
+  if ((currentTime - lastResetTime) > SOLAR_RESET_TIME)
+  {
+    totalSolarExposureToday = 0;
+    lastResetTime = currentTime;
+    Serial.println("🔄 Contador de exposición solar reseteado");
+  }
+
+  // Calcular tiempo restante para 6 horas máximo (21600 segundos)
+  unsigned long maxSolarExposure = 21600; // 6 horas en segundos
+  unsigned long remainingSolarTime = (totalSolarExposureToday < maxSolarExposure)
+                                         ? (maxSolarExposure - totalSolarExposureToday)
+                                         : 0;
+
+  // Enviar datos de exposición solar a Firebase
+  ok &= Firebase.RTDB.setInt(&fbData, "/hydroponic_data/sensores/ldr/exposicion_solar_hoy_segundos", totalSolarExposureToday);
+  ok &= Firebase.RTDB.setInt(&fbData, "/hydroponic_data/sensores/ldr/tiempo_restante_segundos", remainingSolarTime);
+  ok &= Firebase.RTDB.setBool(&fbData, "/hydroponic_data/sensores/ldr/exposicion_activa", isSolarExposure);
+
+  // Estados de sensores de nivel de tanques de dosificacion
   ok &= Firebase.RTDB.setBool(&fbData, "/hydroponic_data/sensores/nivel_ph_minus/estado", nivel_ph_minus);
   ok &= Firebase.RTDB.setBool(&fbData, "/hydroponic_data/sensores/nivel_ph_plus/estado", nivel_ph_plus);
 
@@ -134,7 +208,7 @@ void enviarDatos()
 
 void imprimirEstadoSistema()
 {
-  Serial.println("\n=== ESTADO DEL SISTEMA HIDROP├ôNICO ===");
+  Serial.println("\n=== ESTADO DEL SISTEMA HIDROPONICO ===");
 
   // Estado de sensores
   Serial.printf("pH: %.2f (%.3fV) [%s]\n",
@@ -187,7 +261,7 @@ void setup()
   delay(2000);
 
   Serial.println("\n========================================");
-  Serial.println("    ­ƒÜÇ SISTEMA HIDROP├ôNICO MODULAR ­ƒÜÇ    ");
+  Serial.println("       ­SISTEMA HIDROPONICO MODULAR ­      ");
   Serial.println("========================================");
 
   // Inicializar EEPROM para calibraciones
@@ -199,7 +273,7 @@ void setup()
   tdsSensor.begin();
   ldrSensor.begin();
 
-  // Configurar sensores de nivel SEN0205 para tanques de dosificaci├│n
+  // Configurar sensores de nivel SEN0205 para tanques de dosificacion
   levelSensors.addSensor(LVL_PH_MINUS, true, "pH-");
   levelSensors.addSensor(LVL_PH_PLUS, true, "pH+");
   levelSensors.begin();
@@ -215,8 +289,8 @@ void setup()
   conectarWiFi();
   if (WiFi.status() != WL_CONNECTED)
   {
-    Serial.println("Sin WiFi - Sistema requiere conexi├│n para datos reales");
-    Serial.println("ÔØî WIFI REQUERIDO PARA FUNCIONAMIENTO REAL");
+    Serial.println("Sin WiFi - Sistema requiere conexion para datos reales");
+    Serial.println("con WIFI REQUERIDO PARA FUNCIONAMIENTO REAL");
     while (true)
     {
       delay(1000);
@@ -224,7 +298,7 @@ void setup()
       conectarWiFi();
       if (WiFi.status() == WL_CONNECTED)
       {
-        Serial.println("Ô£à WiFi conectado, continuando...");
+        Serial.println("WiFi conectado, continuando...");
         break;
       }
     }
@@ -240,7 +314,7 @@ void setup()
   Firebase.begin(&config, &auth);
   Firebase.reconnectWiFi(true);
 
-  // Esperar conexi├│n Firebase
+  // Esperar conexion Firebase
   Serial.println("Esperando Firebase...");
   int espera = 0;
   while (!Firebase.ready() && espera < 30)
@@ -252,27 +326,27 @@ void setup()
 
   if (Firebase.ready())
   {
-    Serial.println("\nÔ£à Firebase conectado");
-    Serial.println("­ƒöä Sistema funcionando con SENSORES REALES ├║nicamente");
-    enviarDatos(); // Env├¡o inicial
+    Serial.println("\n Firebase conectado");
+    Serial.println("­Sistema funcionando con SENSORES");
+    enviarDatos(); // Envio inicial
   }
   else
   {
-    Serial.println("\nÔØî Firebase requerido para datos reales");
-    Serial.println("­ƒöä Reintentando conexi├│n Firebase...");
+    Serial.println("\n Firebase requerido para datos reales");
+    Serial.println("Reintentando conexion Firebase...");
     while (!Firebase.ready())
     {
       delay(2000);
       Serial.print(".");
       if (Firebase.ready())
       {
-        Serial.println("\nÔ£à Firebase conectado - continuando con sensores reales");
+        Serial.println("\nFirebase conectado");
         break;
       }
     }
   }
 
-  Serial.println("\nÔ£à Sistema inicializado completamente");
+  Serial.println("\nSistema inicializado completamente");
   Serial.println("Escribe HELP para ver comandos disponibles\n");
 }
 
@@ -301,13 +375,13 @@ void loop()
       ldrSensor.update();
     }
 
-    // Control autom├ítico de pH con datos reales
+    // Control de pH
     bool nivelMinus = levelSensors.isLevelOK("pH-");
     bool nivelPlus = levelSensors.isLevelOK("pH+");
     pumpController.update(phSensor.getFilteredPH(), nivelMinus, nivelPlus);
   }
 
-  // Actualizar Firebase (solo con datos reales)
+  // Actualizar Firebase
   if (now - lastFirebaseUpdate >= FIREBASE_INTERVAL)
   {
     lastFirebaseUpdate = now;
@@ -317,10 +391,55 @@ void loop()
     }
   }
 
-  // Salida por Serial (siempre mostrar estado real)
+  // Salida por Serial
   if (now - lastSerialOutput >= SERIAL_INTERVAL)
   {
     lastSerialOutput = now;
     imprimirEstadoSistema();
+  }
+
+  // --- CONTROL REMOTO DE BOMBAS DESDE FIREBASE ---
+  if (Firebase.ready())
+  {
+    int cmdBombaAgua = -1, cmdBombaSustrato = -1, cmdBombaSolucion = -1;
+
+    if (Firebase.RTDB.getInt(&fbData, "/hydroponic_data/comandos/bomba_agua"))
+    {
+      cmdBombaAgua = fbData.intData();
+    }
+    if (Firebase.RTDB.getInt(&fbData, "/hydroponic_data/comandos/bomba_sustrato"))
+    {
+      cmdBombaSustrato = fbData.intData();
+    }
+    if (Firebase.RTDB.getInt(&fbData, "/hydroponic_data/comandos/bomba_solucion"))
+    {
+      cmdBombaSolucion = fbData.intData();
+    }
+
+    // Solo si el comando cambió, actualiza la bomba
+    if (cmdBombaAgua != -1 && cmdBombaAgua != lastCmdBombaAgua)
+    {
+      if (cmdBombaAgua == 1)
+        pumpController.forceCirculation(true);
+      else
+        pumpController.forceCirculation(false);
+      lastCmdBombaAgua = cmdBombaAgua;
+    }
+    if (cmdBombaSustrato != -1 && cmdBombaSustrato != lastCmdBombaSustrato)
+    {
+      if (cmdBombaSustrato == 1)
+        pumpController.forcePumpMinus(true);
+      else
+        pumpController.forcePumpMinus(false);
+      lastCmdBombaSustrato = cmdBombaSustrato;
+    }
+    if (cmdBombaSolucion != -1 && cmdBombaSolucion != lastCmdBombaSolucion)
+    {
+      if (cmdBombaSolucion == 1)
+        pumpController.forcePumpPlus(true);
+      else
+        pumpController.forcePumpPlus(false);
+      lastCmdBombaSolucion = cmdBombaSolucion;
+    }
   }
 }
