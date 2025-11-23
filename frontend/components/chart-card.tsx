@@ -2,6 +2,7 @@
 
 import { Card } from "@/components/ui/card"
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis, ReferenceLine } from "recharts"
+import { useEffect, useState } from "react"
 
 interface ChartCardProps {
   title: string
@@ -14,9 +15,35 @@ interface ChartCardProps {
 }
 
 export function ChartCard({ title, data, dataKey, color, unit = "", optimalMin, optimalMax }: ChartCardProps) {
+  const [isDark, setIsDark] = useState(false)
+
+  useEffect(() => {
+    // Detectar si el tema es oscuro
+    const checkTheme = () => {
+      const isDarkMode = document.documentElement.classList.contains('dark')
+      setIsDark(isDarkMode)
+    }
+
+    // Verificar al montar
+    checkTheme()
+
+    // Observar cambios en el tema
+    const observer = new MutationObserver(checkTheme)
+    observer.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ['class']
+    })
+
+    return () => observer.disconnect()
+  }, [])
+
+  // Colores para los ejes según el tema
+  const axisColor = isDark ? "#ffffff" : "hsl(var(--foreground))"
+  const axisLineColor = isDark ? "rgba(255, 255, 255, 0.2)" : "hsl(var(--border))"
+
   return (
     <Card className="border-border/50 bg-card/50 p-6 backdrop-blur">
-      <h3 className="mb-4 text-lg font-semibold">{title}</h3>
+      <h3 className="mb-4 text-lg font-semibold text-center sm:text-center">{title}</h3>
       <ResponsiveContainer width="100%" height={250}>
         <AreaChart data={data}>
           <defs>
@@ -26,8 +53,21 @@ export function ChartCard({ title, data, dataKey, color, unit = "", optimalMin, 
             </linearGradient>
           </defs>
           <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" opacity={0.3} />
-          <XAxis dataKey="time" stroke="hsl(var(--muted-foreground))" fontSize={12} tickLine={false} />
-          <YAxis stroke="hsl(var(--muted-foreground))" fontSize={12} tickLine={false} />
+          <XAxis 
+            dataKey="time" 
+            stroke={axisColor} 
+            fontSize={12} 
+            tickLine={false}
+            tick={{ fill: axisColor }}
+            axisLine={{ stroke: axisLineColor }}
+          />
+          <YAxis 
+            stroke={axisColor} 
+            fontSize={12} 
+            tickLine={false}
+            tick={{ fill: axisColor }}
+            axisLine={{ stroke: axisLineColor }}
+          />
           <Tooltip
             contentStyle={{
               backgroundColor: "hsl(var(--card))",

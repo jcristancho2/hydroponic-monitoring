@@ -45,6 +45,11 @@ public:
     void forcePumpPlus(bool on);
     void forceCirculation(bool on);
 
+    // Control de emergencia
+    void emergencyStop();
+    void emergencyResume();
+    bool isEmergencyMode() const { return emergencyMode; }
+
     // Estado
     DoseType getCurrentDoseType() const { return doseType; }
     DoseState getCurrentDoseState() const { return doseState; }
@@ -68,6 +73,7 @@ private:
     DoseState doseState;
     unsigned long doseStamp;
     unsigned long sessionStart;
+    bool emergencyMode;
 
     void relayWrite(uint8_t pin, bool on);
     void stopAllDosing();

@@ -136,6 +136,27 @@ void SerialCommands::processCommand(String cmd)
             Serial.println("Relés configurados: HIGH = ON");
         }
     }
+    else if (cmd == "RESET")
+    {
+        Serial.println("\n⚠️ COMANDO DE REINICIO RECIBIDO");
+        Serial.println("Reiniciando ESP32 en 1 segundo...");
+        delay(1000);
+        ESP.restart();
+    }
+    else if (cmd == "EMERGENCY" || cmd == "EMERGENCY,ON")
+    {
+        if (pumpController)
+        {
+            pumpController->emergencyStop();
+        }
+    }
+    else if (cmd == "EMERGENCY,OFF" || cmd == "RESUME")
+    {
+        if (pumpController)
+        {
+            pumpController->emergencyResume();
+        }
+    }
     else if (cmd == "HELP")
     {
         printHelp();
@@ -168,6 +189,10 @@ void SerialCommands::printHelp()
     Serial.println("  PMINUS,ON  - Encender bomba pH-");
     Serial.println("  PMINUS,OFF - Apagar bomba pH-");
     Serial.println();
+    Serial.println("Sistema:");
+    Serial.println("  RESET      - Reiniciar ESP32");
+    Serial.println("  EMERGENCY  - Activar parada de emergencia");
+    Serial.println("  RESUME     - Desactivar parada de emergencia");
     Serial.println("  HELP       - Mostrar esta ayuda");
     Serial.println("===============================\n");
 }

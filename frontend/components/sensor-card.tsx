@@ -21,20 +21,18 @@ export function SensorCard({ title, value, unit, icon, status, description, opti
 
   return (
     <Card className="border-border/50 bg-card/50 p-4 backdrop-blur transition-all hover:border-border sm:p-6">
-      <div className="flex items-start justify-between">
-        <div className="flex items-center gap-2 sm:gap-3">
+      <div className="flex flex-col items-center justify-center text-center">
+        <div className="flex items-center justify-center gap-2 sm:gap-3 mb-2">
           <div className={`rounded-lg p-2 ${statusColors[status]} sm:p-2.5`}>{icon}</div>
           <div>
             <p className="text-xs font-medium text-muted-foreground sm:text-sm">{title}</p>
             <p className="text-[10px] text-muted-foreground/70 sm:text-xs">{description}</p>
           </div>
         </div>
-        <Badge variant="outline" className={`${statusColors[status]} border text-[10px] sm:text-xs`}>
+        <Badge variant="outline" className={`${statusColors[status]} border text-[10px] sm:text-xs mb-3`}>
           {status === "optimal" ? "Óptimo" : status === "warning" ? "Alerta" : "--"}
         </Badge>
-      </div>
-      <div className="mt-3 sm:mt-4">
-        <div className="flex items-baseline gap-1.5 sm:gap-2">
+        <div className="flex items-baseline justify-center gap-1.5 sm:gap-2">
           <span className="text-3xl font-bold tracking-tight sm:text-4xl">{value}</span>
           <span className="text-base text-muted-foreground sm:text-lg">{unit}</span>
         </div>

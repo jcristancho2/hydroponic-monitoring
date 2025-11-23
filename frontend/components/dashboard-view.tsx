@@ -16,6 +16,9 @@ import {
   XCircle,
   Sun,
   Download,
+  RefreshCw,
+  AlertTriangle,
+  Power,
 } from "lucide-react";
 import { getDatabase, ref, set } from "firebase/database";
 
@@ -52,6 +55,7 @@ interface HydroponicData {
   };
   sistema?: {
     modo?: string;
+    emergencia?: boolean;
   };
 }
 
@@ -68,6 +72,9 @@ export function DashboardView() {
   const [lastAlert, setLastAlert] = useState<string | null>(null);
   const [ldrAlert, setLdrAlert] = useState<string | null>(null);
   const [isDownloading, setIsDownloading] = useState(false);
+  const [isResetting, setIsResetting] = useState(false);
+  const [isEmergencyActive, setIsEmergencyActive] = useState(false);
+  const [isTogglingEmergency, setIsTogglingEmergency] = useState(false);
 
   useEffect(() => {
     const initFirebase = async () => {
@@ -93,6 +100,9 @@ export function DashboardView() {
 
             // Detectar modo de simulación
             setIsSimulationMode(newData.sistema?.modo === "simulacion");
+            
+            // Detectar modo de emergencia
+            setIsEmergencyActive(newData.sistema?.emergencia === true);
 
             // Verificar alertas críticas
             if (!isSimulationMode) {
@@ -172,13 +182,6 @@ export function DashboardView() {
     initFirebase();
   }, []);
 
-  const setBombaCommand = (
-    bomba: "bomba_agua" | "bomba_sustrato" | "bomba_solucion",
-    estado: 0 | 1
-  ) => {
-    const db = getDatabase();
-    set(ref(db, `/hydroponic_data/comandos/${bomba}`), estado);
-  };
 
   // Función para descargar datos en formato Excel/CSV
   const handleDownloadData = async () => {
@@ -265,6 +268,100 @@ export function DashboardView() {
     return `${hours}h ${minutes}m`;
   };
 
+  // Función para activar/desactivar modo emergencia
+  const handleEmergencyToggle = async () => {
+    if (!isOnline) {
+      alert("⚠️ El sistema no está conectado. No se puede activar/desactivar emergencia.");
+      return;
+    }
+
+    const isActivating = !isEmergencyActive;
+    const action = isActivating ? "activar" : "desactivar";
+    const confirmMessage = isActivating
+      ? "¿Estás seguro de que deseas ACTIVAR el modo de emergencia?\n\n⚠️ Esto detendrá TODAS las bombas inmediatamente y desactivará el control automático."
+      : "¿Estás seguro de que deseas DESACTIVAR el modo de emergencia?\n\n✅ Esto restaurará el funcionamiento normal del sistema.";
+
+    const confirmAction = window.confirm(confirmMessage);
+
+    if (!confirmAction) {
+      return;
+    }
+
+    try {
+      setIsTogglingEmergency(true);
+      const { initializeApp } = await import("firebase/app");
+      const { getDatabase, ref, set } = await import("firebase/database");
+
+      const firebaseConfig = {
+        databaseURL:
+          "https://proyecto-hidroponico-9ea9d-default-rtdb.firebaseio.com",
+      };
+
+      const app = initializeApp(firebaseConfig);
+      const db = getDatabase(app);
+      const emergencyRef = ref(db, "/hydroponic_data/comandos/emergency");
+
+      // Enviar comando de emergencia
+      await set(emergencyRef, isActivating);
+      console.log(`Comando de emergencia ${action} enviado a Firebase`);
+
+      // Mostrar mensaje de confirmación
+      if (isActivating) {
+        alert("🚨 MODO EMERGENCIA ACTIVADO\n\nTodas las bombas han sido detenidas.");
+      } else {
+        alert("✅ MODO EMERGENCIA DESACTIVADO\n\nEl sistema ha sido restaurado.");
+      }
+    } catch (error) {
+      console.error("Error al enviar comando de emergencia:", error);
+      alert("❌ Error al enviar comando de emergencia. Por favor, intenta nuevamente.");
+    } finally {
+      setIsTogglingEmergency(false);
+    }
+  };
+
+  // Función para reiniciar la ESP32
+  const handleResetESP32 = async () => {
+    if (!isOnline) {
+      alert("⚠️ El sistema no está conectado. No se puede reiniciar.");
+      return;
+    }
+
+    const confirmReset = window.confirm(
+      "¿Estás seguro de que deseas reiniciar la ESP32?\n\nEl sistema se desconectará temporalmente y volverá a conectarse en unos segundos."
+    );
+
+    if (!confirmReset) {
+      return;
+    }
+
+    try {
+      setIsResetting(true);
+      const { initializeApp } = await import("firebase/app");
+      const { getDatabase, ref, set } = await import("firebase/database");
+
+      const firebaseConfig = {
+        databaseURL:
+          "https://proyecto-hidroponico-9ea9d-default-rtdb.firebaseio.com",
+      };
+
+      const app = initializeApp(firebaseConfig);
+      const db = getDatabase(app);
+      const resetRef = ref(db, "/hydroponic_data/comandos/reset");
+
+      // Enviar comando de reinicio
+      await set(resetRef, true);
+      console.log("Comando de reinicio enviado a Firebase");
+
+      // Mostrar mensaje de confirmación
+      alert("✅ Comando de reinicio enviado. La ESP32 se reiniciará en breve.");
+    } catch (error) {
+      console.error("Error al enviar comando de reinicio:", error);
+      alert("❌ Error al enviar comando de reinicio. Por favor, intenta nuevamente.");
+    } finally {
+      setIsResetting(false);
+    }
+  };
+
   const isOnline = data?.diagnostico?.estado === "Conectado";
   const lastUpdate = data?.diagnostico?.timestamp
     ? new Date(data.diagnostico.timestamp).toLocaleString("es-ES")
@@ -294,7 +391,9 @@ export function DashboardView() {
               </span>
             </p>
           </div>
-          <div className="flex items-center gap-2 sm:gap-3">
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3">
+            
+            <div className="flex items-center gap-2 sm:gap-3">
             <ThemeToggle />
             <Button
               onClick={handleDownloadData}
@@ -325,6 +424,25 @@ export function DashboardView() {
                 {isOnline ? "Conectado" : "Desconectado"}
               </span>
             </Badge>
+            <Button
+              onClick={handleResetESP32}
+              disabled={!isOnline || isResetting}
+              variant="outline"
+              size="sm"
+              className="gap-2 border-orange-200 hover:bg-orange-50 dark:border-orange-800 dark:hover:bg-orange-950"
+              title="Reiniciar ESP32"
+            >
+              <RefreshCw
+                className={`h-4 w-4 ${isResetting ? "animate-spin" : ""}`}
+              />
+              <span className="hidden sm:inline">
+                {isResetting ? "Reiniciando..." : "Reiniciar"}
+              </span>
+              <span className="sm:hidden">
+                {isResetting ? "..." : "R"}
+              </span>
+            </Button>
+            </div>
           </div>
         </header>
 
@@ -336,6 +454,35 @@ export function DashboardView() {
           tdsConnected={data?.sensores?.tds_conectado || false}
           lastUpdate={lastUpdate}
         />
+
+        {/* Emergency Mode Alert */}
+        {isEmergencyActive && (
+          <Card className="border-red-500 bg-red-50 dark:bg-red-950 dark:border-red-800 p-4 animate-pulse">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <AlertTriangle className="h-6 w-6 text-red-600 dark:text-red-400" />
+                <div>
+                  <p className="text-lg font-bold text-red-900 dark:text-red-100">
+                    🚨 MODO EMERGENCIA ACTIVADO 🚨
+                  </p>
+                  <p className="text-sm text-red-800 dark:text-red-200">
+                    Todas las bombas están detenidas. El control automático está desactivado.
+                  </p>
+                </div>
+              </div>
+              <Button
+                onClick={handleEmergencyToggle}
+                disabled={!isOnline || isTogglingEmergency}
+                variant="default"
+                size="sm"
+                className="bg-green-600 hover:bg-green-700 text-white"
+              >
+                <Power className="h-4 w-4 mr-2" />
+                {isTogglingEmergency ? "Procesando..." : "Restaurar Sistema"}
+              </Button>
+            </div>
+          </Card>
+        )}
 
         {/* Alerts Section */}
         {(lastAlert || ldrAlert) && (
@@ -478,7 +625,7 @@ export function DashboardView() {
         </Card>
 
         {/* Sensors Grid */}
-        <div className="grid gap-3 sm:grid-cols-2 sm:gap-4 lg:gap-6">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 sm:gap-4 lg:gap-6">
           <SensorCard
             title="pH"
             value={
@@ -696,59 +843,32 @@ export function DashboardView() {
             />
           </div>
         </div>
-
-        {/* Manual Control - Only show in real mode */}
-        {!isSimulationMode && (
-          <div>
-            <h2 className="mb-3 text-lg font-semibold sm:mb-4 sm:text-xl">
-              Control Manual de Bombas
-            </h2>
-            <div className="grid gap-3 sm:gap-4 md:grid-cols-3 lg:gap-6 mt-4">
-              <div>
-                <button
-                  className="px-4 py-2 bg-green-600 text-white rounded mr-2"
-                  onClick={() => setBombaCommand("bomba_agua", 1)}
-                >
-                  Encender Bomba Agua
-                </button>
-                <button
-                  className="px-4 py-2 bg-red-600 text-white rounded"
-                  onClick={() => setBombaCommand("bomba_agua", 0)}
-                >
-                  Apagar Bomba Agua
-                </button>
-              </div>
-              <div>
-                <button
-                  className="px-4 py-2 bg-green-600 text-white rounded mr-2"
-                  onClick={() => setBombaCommand("bomba_sustrato", 1)}
-                >
-                  Encender Bomba pH-
-                </button>
-                <button
-                  className="px-4 py-2 bg-red-600 text-white rounded"
-                  onClick={() => setBombaCommand("bomba_sustrato", 0)}
-                >
-                  Apagar Bomba pH-
-                </button>
-              </div>
-              <div>
-                <button
-                  className="px-4 py-2 bg-green-600 text-white rounded mr-2"
-                  onClick={() => setBombaCommand("bomba_solucion", 1)}
-                >
-                  Encender Bomba pH+
-                </button>
-                <button
-                  className="px-4 py-2 bg-red-600 text-white rounded"
-                  onClick={() => setBombaCommand("bomba_solucion", 0)}
-                >
-                  Apagar Bomba pH+
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
+        <div className="flex flex-row justify-center items-center gap-2 sm:gap-3">
+        {/* Emergency Button - Large and Prominent */}
+        <Button
+              onClick={handleEmergencyToggle}
+              disabled={!isOnline || isTogglingEmergency}
+              variant={isEmergencyActive ? "default" : "destructive"}
+              size="lg"
+              className={`gap-2 font-bold text-base sm:text-lg ${
+                isEmergencyActive
+                  ? "bg-green-600 hover:bg-green-700 text-white"
+                  : "bg-red-600 hover:bg-red-700 text-white animate-pulse"
+              }`}
+            >
+              {isEmergencyActive ? (
+                <>
+                  <Power className="h-5 w-5" />
+                  <span>RESTAURAR SISTEMA</span>
+                </>
+              ) : (
+                <>
+                  <AlertTriangle className="h-5 w-5" />
+                  <span>PARADA DE EMERGENCIA</span>
+                </>
+              )}
+            </Button>  
+        </div>          
       </div>
     </div>
   );

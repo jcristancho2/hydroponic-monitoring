@@ -32,14 +32,12 @@ SerialCommands serialCommands;
 unsigned long lastSensorUpdate = 0;
 unsigned long lastFirebaseUpdate = 0;
 unsigned long lastSerialOutput = 0;
+unsigned long lastCommandCheck = 0;
 const unsigned long SENSOR_INTERVAL = 500;     // 500ms para sensores
 const unsigned long FIREBASE_INTERVAL = 10000; // 10s para Firebase
 const unsigned long SERIAL_INTERVAL = 5000;    // 5s para salida serial
+const unsigned long COMMAND_CHECK_INTERVAL = 2000; // 2s para verificar comandos
 
-// Al inicio del archivo, después de las variables globales
-int lastCmdBombaAgua = -1;
-int lastCmdBombaSustrato = -1;
-int lastCmdBombaSolucion = -1;
 
 // Monitoreo de exposición solar
 unsigned long solarExposureStartTime = 0;        // Inicio de exposición solar
@@ -142,6 +140,9 @@ void enviarDatos()
   ok &= Firebase.RTDB.setInt(&fbData, "/hydroponic_data/actuadores/bomba_agua/estado", bomba_agua);
   ok &= Firebase.RTDB.setInt(&fbData, "/hydroponic_data/actuadores/bomba_sustrato/estado", bomba_sustrato);
   ok &= Firebase.RTDB.setInt(&fbData, "/hydroponic_data/actuadores/bomba_solucion/estado", bomba_solucion);
+
+  // Estado de emergencia
+  ok &= Firebase.RTDB.setBool(&fbData, "/hydroponic_data/sistema/emergencia", pumpController.isEmergencyMode());
 
   // Datos adicionales del sistema real
   ok &= Firebase.RTDB.setBool(&fbData, "/hydroponic_data/sensores/tds_conectado", tdsSensor.isConnected());
@@ -375,10 +376,13 @@ void loop()
       ldrSensor.update();
     }
 
-    // Control de pH
-    bool nivelMinus = levelSensors.isLevelOK("pH-");
-    bool nivelPlus = levelSensors.isLevelOK("pH+");
-    pumpController.update(phSensor.getFilteredPH(), nivelMinus, nivelPlus);
+    // Control de pH (solo si no está en modo emergencia)
+    if (!pumpController.isEmergencyMode())
+    {
+      bool nivelMinus = levelSensors.isLevelOK("pH-");
+      bool nivelPlus = levelSensors.isLevelOK("pH+");
+      pumpController.update(phSensor.getFilteredPH(), nivelMinus, nivelPlus);
+    }
   }
 
   // Actualizar Firebase
@@ -398,48 +402,53 @@ void loop()
     imprimirEstadoSistema();
   }
 
-  // --- CONTROL REMOTO DE BOMBAS DESDE FIREBASE ---
-  if (Firebase.ready())
+  // Verificar comandos desde Firebase
+  if (now - lastCommandCheck >= COMMAND_CHECK_INTERVAL)
   {
-    int cmdBombaAgua = -1, cmdBombaSustrato = -1, cmdBombaSolucion = -1;
+    lastCommandCheck = now;
+    if (WiFi.status() == WL_CONNECTED && Firebase.ready())
+    {
+      // Leer comando de reinicio desde Firebase
+      if (Firebase.RTDB.getBool(&fbData, "/hydroponic_data/comandos/reset"))
+      {
+        if (fbData.dataType() == "boolean" && fbData.boolData())
+        {
+          Serial.println("\n⚠️ COMANDO DE REINICIO RECIBIDO DESDE FIREBASE");
+          Serial.println("Reiniciando ESP32 en 1 segundo...");
+          
+          // Limpiar el comando para evitar reinicios múltiples
+          Firebase.RTDB.setBool(&fbData, "/hydroponic_data/comandos/reset", false);
+          
+          delay(1000);
+          ESP.restart();
+        }
+      }
 
-    if (Firebase.RTDB.getInt(&fbData, "/hydroponic_data/comandos/bomba_agua"))
-    {
-      cmdBombaAgua = fbData.intData();
-    }
-    if (Firebase.RTDB.getInt(&fbData, "/hydroponic_data/comandos/bomba_sustrato"))
-    {
-      cmdBombaSustrato = fbData.intData();
-    }
-    if (Firebase.RTDB.getInt(&fbData, "/hydroponic_data/comandos/bomba_solucion"))
-    {
-      cmdBombaSolucion = fbData.intData();
-    }
-
-    // Solo si el comando cambió, actualiza la bomba
-    if (cmdBombaAgua != -1 && cmdBombaAgua != lastCmdBombaAgua)
-    {
-      if (cmdBombaAgua == 1)
-        pumpController.forceCirculation(true);
-      else
-        pumpController.forceCirculation(false);
-      lastCmdBombaAgua = cmdBombaAgua;
-    }
-    if (cmdBombaSustrato != -1 && cmdBombaSustrato != lastCmdBombaSustrato)
-    {
-      if (cmdBombaSustrato == 1)
-        pumpController.forcePumpMinus(true);
-      else
-        pumpController.forcePumpMinus(false);
-      lastCmdBombaSustrato = cmdBombaSustrato;
-    }
-    if (cmdBombaSolucion != -1 && cmdBombaSolucion != lastCmdBombaSolucion)
-    {
-      if (cmdBombaSolucion == 1)
-        pumpController.forcePumpPlus(true);
-      else
-        pumpController.forcePumpPlus(false);
-      lastCmdBombaSolucion = cmdBombaSolucion;
+      // Leer comando de emergencia desde Firebase
+      if (Firebase.RTDB.getBool(&fbData, "/hydroponic_data/comandos/emergency"))
+      {
+        if (fbData.dataType() == "boolean")
+        {
+          bool emergencyCommand = fbData.boolData();
+          bool currentEmergency = pumpController.isEmergencyMode();
+          
+          if (emergencyCommand && !currentEmergency)
+          {
+            // Activar modo emergencia
+            pumpController.emergencyStop();
+            // Confirmar en Firebase
+            Firebase.RTDB.setBool(&fbData, "/hydroponic_data/sistema/emergencia", true);
+          }
+          else if (!emergencyCommand && currentEmergency)
+          {
+            // Desactivar modo emergencia
+            pumpController.emergencyResume();
+            // Confirmar en Firebase
+            Firebase.RTDB.setBool(&fbData, "/hydroponic_data/sistema/emergencia", false);
+          }
+        }
+      }
     }
   }
+
 }

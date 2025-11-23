@@ -2,7 +2,7 @@
 
 PumpController::PumpController(uint8_t relayCirc, uint8_t relayPhMinus, uint8_t relayPhPlus)
     : relayCircPin(relayCirc), relayMinusPin(relayPhMinus), relayPlusPin(relayPhPlus),
-      doseType(NONE), doseState(IDLE), doseStamp(0), sessionStart(0)
+      doseType(NONE), doseState(IDLE), doseStamp(0), sessionStart(0), emergencyMode(false)
 {
 }
 
@@ -30,6 +30,12 @@ void PumpController::begin(const Config &config)
 
 void PumpController::update(float ph, bool levelMinusOK, bool levelPlusOK)
 {
+    // Si está en modo emergencia, no ejecutar control automático
+    if (emergencyMode)
+    {
+        return;
+    }
+
     unsigned long now = millis();
 
     switch (doseState)
@@ -228,4 +234,32 @@ void PumpController::stopAllDosing()
     relayWrite(relayPlusPin, false);
     doseType = NONE;
     doseState = IDLE;
+}
+
+void PumpController::emergencyStop()
+{
+    if (emergencyMode)
+        return; // Ya está en emergencia
+
+    emergencyMode = true;
+    // Detener todas las bombas inmediatamente
+    relayWrite(relayCircPin, false);
+    relayWrite(relayMinusPin, false);
+    relayWrite(relayPlusPin, false);
+    doseType = NONE;
+    doseState = IDLE;
+    Serial.println("🚨🚨🚨 MODO EMERGENCIA ACTIVADO - TODAS LAS BOMBAS DETENIDAS 🚨🚨🚨");
+}
+
+void PumpController::emergencyResume()
+{
+    if (!emergencyMode)
+        return; // No está en emergencia
+
+    emergencyMode = false;
+    // Restaurar circulación (las bombas de dosificación quedan OFF)
+    relayWrite(relayCircPin, true);
+    doseType = NONE;
+    doseState = IDLE;
+    Serial.println("✅ MODO EMERGENCIA DESACTIVADO - Sistema restaurado");
 }
