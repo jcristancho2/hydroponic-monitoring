@@ -521,7 +521,6 @@ Si necesitas ayuda:
    - Screenshots si es necesario
    - Información del sistema (OS, versiones)
 
-3. **Contacto**: [jocristanchool@gmail.com]
 
 ---
 
