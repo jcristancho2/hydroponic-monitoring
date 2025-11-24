@@ -51,7 +51,8 @@ void PumpController::update(float ph, bool levelMinusOK, bool levelPlusOK)
             doseStamp = now;
             sessionStart = now;
             doseState = DOSING;
-            Serial.println("PumpController: pH+ ON (pulso 10s)");
+            Serial.printf("PumpController: pH+ ON - pH=%.2f < MIN=%.2f, Nivel=%s\n",
+                          ph, config.phMin, levelPlusOK ? "OK" : "BAJO");
         }
         // ¿Necesita bajar pH?
         else if (ph > config.phMax && levelMinusOK)
@@ -62,18 +63,21 @@ void PumpController::update(float ph, bool levelMinusOK, bool levelPlusOK)
             doseStamp = now;
             sessionStart = now;
             doseState = DOSING;
-            Serial.println("PumpController: pH- ON (pulso 10s)");
+            Serial.printf("PumpController: pH- ON - pH=%.2f > MAX=%.2f, Nivel=%s\n",
+                          ph, config.phMax, levelMinusOK ? "OK" : "BAJO");
         }
         else
         {
             // Alertas de nivel bajo
             if (ph < config.phMin && !levelPlusOK)
             {
-                Serial.println("PumpController: ALERTA - Depósito pH+ BAJO");
+                Serial.printf("PumpController: ALERTA - pH+ bloqueado. pH=%.2f < MIN=%.2f pero Nivel=BAJO\n",
+                              ph, config.phMin);
             }
             if (ph > config.phMax && !levelMinusOK)
             {
-                Serial.println("PumpController: ALERTA - Depósito pH- BAJO");
+                Serial.printf("PumpController: ALERTA - pH- bloqueado. pH=%.2f > MAX=%.2f pero Nivel=BAJO\n",
+                              ph, config.phMax);
             }
         }
         break;
@@ -199,6 +203,28 @@ bool PumpController::isCirculationOn() const
 {
     int state = digitalRead(relayCircPin);
     return config.relayActiveLow ? (state == LOW) : (state == HIGH);
+}
+
+bool PumpController::isPumpMinusActive() const
+{
+    // Retorna true si pH- está siendo controlado (independiente del pulso)
+    if (doseState != DOSING)
+        return false;
+    return doseType == DOSE_MINUS;
+}
+
+bool PumpController::isPumpPlusActive() const
+{
+    // Retorna true si pH+ está siendo controlado (independiente del pulso)
+    if (doseState != DOSING)
+        return false;
+    return doseType == DOSE_PLUS;
+}
+
+bool PumpController::isDosingActive() const
+{
+    // Retorna true si hay alguna dosificación en progreso
+    return (doseState == DOSING);
 }
 
 unsigned long PumpController::getElapsedPulse() const

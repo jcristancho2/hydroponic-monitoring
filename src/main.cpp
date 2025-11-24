@@ -1,4 +1,4 @@
-﻿#include <Arduino.h>
+#include <Arduino.h>
 #include <WiFi.h>
 #include <Firebase_ESP_Client.h>
 #include <EEPROM.h>
@@ -33,11 +33,10 @@ unsigned long lastSensorUpdate = 0;
 unsigned long lastFirebaseUpdate = 0;
 unsigned long lastSerialOutput = 0;
 unsigned long lastCommandCheck = 0;
-const unsigned long SENSOR_INTERVAL = 500;     // 500ms para sensores
-const unsigned long FIREBASE_INTERVAL = 10000; // 10s para Firebase
-const unsigned long SERIAL_INTERVAL = 5000;    // 5s para salida serial
+const unsigned long SENSOR_INTERVAL = 500;         // 500ms para sensores
+const unsigned long FIREBASE_INTERVAL = 10000;     // 10s para Firebase
+const unsigned long SERIAL_INTERVAL = 5000;        // 5s para salida serial
 const unsigned long COMMAND_CHECK_INTERVAL = 2000; // 2s para verificar comandos
-
 
 // Monitoreo de exposición solar
 unsigned long solarExposureStartTime = 0;        // Inicio de exposición solar
@@ -132,10 +131,10 @@ void enviarDatos()
   ok &= Firebase.RTDB.setFloat(&fbData, tdsHistPath, tds_value);
   ok &= Firebase.RTDB.setInt(&fbData, ldrHistPath, ldr_value);
 
-  // Estados de las bombas
+  // Estados de las bombas (usar estado lógico, no físico)
   int bomba_agua = pumpController.isCirculationOn() ? 1 : 0;
-  int bomba_sustrato = pumpController.isPumpMinusOn() ? 1 : 0;
-  int bomba_solucion = pumpController.isPumpPlusOn() ? 1 : 0;
+  int bomba_sustrato = pumpController.isPumpMinusActive() ? 1 : 0; // Estado lógico de control
+  int bomba_solucion = pumpController.isPumpPlusActive() ? 1 : 0;  // Estado lógico de control
 
   ok &= Firebase.RTDB.setInt(&fbData, "/hydroponic_data/actuadores/bomba_agua/estado", bomba_agua);
   ok &= Firebase.RTDB.setInt(&fbData, "/hydroponic_data/actuadores/bomba_sustrato/estado", bomba_sustrato);
@@ -225,31 +224,34 @@ void imprimirEstadoSistema()
                 ldrSensor.getRawValue(),
                 ldrSensor.getLightLevelString().c_str());
 
-  // Estado de niveles de tanques de dosificaci├│n
+  // Estado de niveles de tanques de dosificacion - CON DEBUGGING
   bool nivelMinus = levelSensors.isLevelOK("pH-");
   bool nivelPlus = levelSensors.isLevelOK("pH+");
-  Serial.printf("Niveles - pH-: %s | pH+: %s\n",
-                nivelMinus ? "OK" : "BAJO",
-                nivelPlus ? "OK" : "BAJO");
+  int rawMinus = digitalRead(18); // LVL_PH_MINUS
+  int rawPlus = digitalRead(21);  // LVL_PH_PLUS
+
+  Serial.printf("Niveles - pH-: %s (pin18=%d) | pH+: %s (pin21=%d)\n",
+                nivelMinus ? "OK" : "BAJO", rawMinus,
+                nivelPlus ? "OK" : "BAJO", rawPlus);
 
   // Estado de bombas
-  Serial.printf("Bombas - Circulaci├│n: %s | pH-: %s | pH+: %s\n",
+  Serial.printf("Bombas - Circulacion: %s | pH-: %s | pH+: %s\n",
                 pumpController.isCirculationOn() ? "ON" : "OFF",
-                pumpController.isPumpMinusOn() ? "ON" : "OFF",
-                pumpController.isPumpPlusOn() ? "ON" : "OFF");
+                pumpController.isPumpMinusActive() ? "ON" : "OFF",
+                pumpController.isPumpPlusActive() ? "ON" : "OFF");
 
   // Estado de control
   if (pumpController.getCurrentDoseState() == PumpController::DOSING)
   {
     const char *tipoStr = (pumpController.getCurrentDoseType() == PumpController::DOSE_PLUS) ? "pH+" : "pH-";
-    Serial.printf("Dosificaci├│n activa: %s (Pulso: %lums, Sesi├│n: %lums)\n",
+    Serial.printf("Dosificacion activa: %s (Pulso: %lums, Sesion: %lums)\n",
                   tipoStr,
                   pumpController.getElapsedPulse(),
                   pumpController.getElapsedSession());
   }
   else
   {
-    Serial.println("Estado de dosificaci├│n: IDLE");
+    Serial.println("Estado de dosificacion: IDLE");
   }
 
   Serial.printf("Modo: SENSORES REALES\n");
@@ -381,6 +383,15 @@ void loop()
     {
       bool nivelMinus = levelSensors.isLevelOK("pH-");
       bool nivelPlus = levelSensors.isLevelOK("pH+");
+
+      // DEBUG: Mostrar estado de niveles
+      if (nivelMinus == false || nivelPlus == false)
+      {
+        Serial.printf("DEBUG NIVELES - pH-: %s, pH+: %s\n",
+                      nivelMinus ? "OK" : "BAJO",
+                      nivelPlus ? "OK" : "BAJO");
+      }
+
       pumpController.update(phSensor.getFilteredPH(), nivelMinus, nivelPlus);
     }
   }
@@ -415,10 +426,10 @@ void loop()
         {
           Serial.println("\n⚠️ COMANDO DE REINICIO RECIBIDO DESDE FIREBASE");
           Serial.println("Reiniciando ESP32 en 1 segundo...");
-          
+
           // Limpiar el comando para evitar reinicios múltiples
           Firebase.RTDB.setBool(&fbData, "/hydroponic_data/comandos/reset", false);
-          
+
           delay(1000);
           ESP.restart();
         }
@@ -431,7 +442,7 @@ void loop()
         {
           bool emergencyCommand = fbData.boolData();
           bool currentEmergency = pumpController.isEmergencyMode();
-          
+
           if (emergencyCommand && !currentEmergency)
           {
             // Activar modo emergencia
@@ -450,5 +461,4 @@ void loop()
       }
     }
   }
-
 }

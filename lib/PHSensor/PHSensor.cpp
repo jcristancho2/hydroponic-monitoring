@@ -22,7 +22,7 @@ void PHSensor::begin()
 
 void PHSensor::update()
 {
-    lastVoltage = readVoltageMedianAvg(8);
+    lastVoltage = readVoltageMedianAvg(10);
     float modulVoltage = lastVoltage * dividerK;
     phInstant = computePH(modulVoltage, temperature);
     phFiltered = filterAlpha * phInstant + (1.0f - filterAlpha) * phFiltered;

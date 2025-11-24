@@ -20,11 +20,11 @@ public:
 
     struct Config
     {
-        float phMin = 5.8f;                  // pH mínimo - activa bomba pH+ si está por debajo
-        float phMax = 6.9f;                  // pH máximo - activa bomba pH- si está por encima
+        float phMin = 5.5f;                  // pH mínimo - activa bomba pH+ si está por debajo
+        float phMax = 7.5f;                  // pH máximo - activa bomba pH- si está por encima
         float phLowHyst = 6.2f;              // Histéresis baja - detiene pH+ cuando llega aquí
         float phHighHyst = 6.7f;             // Histéresis alta - detiene pH- cuando llega aquí
-        unsigned long doseOnMs = 10000;      // 10s por pulso
+        unsigned long doseOnMs = 5000;       // 5s por pulso
         unsigned long maxSessionMs = 600000; // 10 min máximo
         unsigned long recheckDelayMs = 0;    // Sin delay entre pulsos
         bool relayActiveLow = true;          // true: LOW=ON, false: HIGH=ON
@@ -53,9 +53,12 @@ public:
     // Estado
     DoseType getCurrentDoseType() const { return doseType; }
     DoseState getCurrentDoseState() const { return doseState; }
-    bool isPumpMinusOn() const;
-    bool isPumpPlusOn() const;
-    bool isCirculationOn() const;
+    bool isPumpMinusOn() const;     // Lee estado físico actual del pin
+    bool isPumpPlusOn() const;      // Lee estado físico actual del pin
+    bool isCirculationOn() const;   // Lee estado físico actual del pin
+    bool isPumpMinusActive() const; // Retorna si pH- está siendo controlado
+    bool isPumpPlusActive() const;  // Retorna si pH+ está siendo controlado
+    bool isDosingActive() const;    // Retorna si hay dosificación en progreso
 
     // Configuración
     void setConfig(const Config &config) { this->config = config; }
