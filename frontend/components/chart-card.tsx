@@ -15,20 +15,23 @@ interface ChartCardProps {
 }
 
 export function ChartCard({ title, data, dataKey, color, unit = "", optimalMin, optimalMax }: ChartCardProps) {
-  const [isDark, setIsDark] = useState(false)
+  // Inicializar con un valor seguro que funcione en ambos temas para evitar hidratación
+  // Luego se actualizará en el cliente
+  const [axisColor, setAxisColor] = useState("hsl(var(--foreground))")
+  const [axisLineColor, setAxisLineColor] = useState("hsl(var(--border))")
 
   useEffect(() => {
-    // Detectar si el tema es oscuro
-    const checkTheme = () => {
-      const isDarkMode = document.documentElement.classList.contains('dark')
-      setIsDark(isDarkMode)
+    // Solo actualizar en el cliente después de la hidratación
+    const updateColors = () => {
+      const isDark = document.documentElement.classList.contains('dark')
+      setAxisColor(isDark ? "#ffffff" : "hsl(var(--foreground))")
+      setAxisLineColor(isDark ? "rgba(255, 255, 255, 0.2)" : "hsl(var(--border))")
     }
 
-    // Verificar al montar
-    checkTheme()
+    updateColors()
 
     // Observar cambios en el tema
-    const observer = new MutationObserver(checkTheme)
+    const observer = new MutationObserver(updateColors)
     observer.observe(document.documentElement, {
       attributes: true,
       attributeFilter: ['class']
@@ -36,10 +39,6 @@ export function ChartCard({ title, data, dataKey, color, unit = "", optimalMin, 
 
     return () => observer.disconnect()
   }, [])
-
-  // Colores para los ejes según el tema
-  const axisColor = isDark ? "#ffffff" : "hsl(var(--foreground))"
-  const axisLineColor = isDark ? "rgba(255, 255, 255, 0.2)" : "hsl(var(--border))"
 
   return (
     <Card className="border-border/50 bg-card/50 p-6 backdrop-blur">

@@ -6,6 +6,11 @@ import {
   type ThemeProviderProps,
 } from 'next-themes'
 
-export function ThemeProvider({ children, ...props }: ThemeProviderProps) {
-  return <NextThemesProvider {...props}>{children}</NextThemesProvider>
+import { ReactNode } from 'react';
+
+export function ThemeProvider({
+  children,
+  ...props
+}: ThemeProviderProps & { children: ReactNode }) {
+  return <NextThemesProvider {...props}>{children}</NextThemesProvider>;
 }

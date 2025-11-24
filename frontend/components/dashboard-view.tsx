@@ -59,7 +59,7 @@ interface HydroponicData {
   };
 }
 
-export function DashboardView() {
+export default function DashboardView() {
   const [data, setData] = useState<HydroponicData | null>(null);
   const [phHistory, setPhHistory] = useState<
     Array<{ time: string; value: number }>
