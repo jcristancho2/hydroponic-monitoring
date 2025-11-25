@@ -96,6 +96,12 @@ void enviarDatos()
   // Siempre leer sensores
   ph_value = phSensor.getFilteredPH();
   tds_value = tdsSensor.getTDSValue();
+  
+  // Validar TDS antes de enviar (evitar NaN o valores inválidos)
+  if (!isfinite(tds_value) || tds_value < 0.0f || tds_value > 2000.0f)
+  {
+    tds_value = 0.0f; // Establecer a 0 si es inválido
+  }
 
   // Niveles de tanques de dosificacion
   bool nivel_ph_minus = levelSensors.isLevelOK("pH-");
@@ -216,9 +222,20 @@ void imprimirEstadoSistema()
                 phSensor.getVoltage(),
                 phSensor.isCalibrationValid() ? "Calibrado" : "No calibrado");
 
-  Serial.printf("TDS: %.0f ppm [%s]\n",
-                tdsSensor.getTDSValue(),
-                tdsSensor.isConnected() ? "Conectado" : "Desconectado");
+  float tds_val = tdsSensor.getTDSValue();
+  if (isfinite(tds_val) && tds_val >= 0.0f)
+  {
+    Serial.printf("TDS: %.0f ppm [%s] (ADC: %d)\n",
+                  tds_val,
+                  tdsSensor.isConnected() ? "Conectado" : "Desconectado",
+                  tdsSensor.getRawADC());
+  }
+  else
+  {
+    Serial.printf("TDS: ERROR (NaN/Inf) [%s] (ADC: %d)\n",
+                  tdsSensor.isConnected() ? "Conectado" : "Desconectado",
+                  tdsSensor.getRawADC());
+  }
 
   Serial.printf("LDR: %d (%s)\n",
                 ldrSensor.getRawValue(),
